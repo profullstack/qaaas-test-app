@@ -39,14 +39,14 @@ app.get("/api/todos", (_req, res) => {
 });
 
 // Create a todo
-// BUG 1: Does not validate that `title` is present or non-empty.
-// BUG 2: Uses Date.now() as the id but converts to string inconsistently —
-//         the id field is a number here but compared as string in DELETE.
 app.post("/api/todos", (req, res) => {
   const { title, priority } = req.body;
+  if (!title || !title.trim()) {
+    return res.status(400).json({ error: "Title is required" });
+  }
   const todo = {
     id: Date.now(),
-    title: title,                       // BUG 1: no validation — can be empty/undefined
+    title: title.trim(),
     completed: false,
     priority: priority || "medium",
     createdAt: new Date().toISOString()
@@ -57,10 +57,9 @@ app.post("/api/todos", (req, res) => {
 });
 
 // Toggle complete
-// BUG 3: Uses strict equality (===) comparing string param to number id.
-//         This means toggling completion never finds the todo.
 app.patch("/api/todos/:id/toggle", (req, res) => {
-  const todo = todos.find((t) => t.id === req.params.id); // BUG 3: should be == or Number()
+  const id = Number(req.params.id);
+  const todo = todos.find((t) => t.id === id);
   if (!todo) {
     return res.status(404).json({ error: "Todo not found" });
   }
@@ -70,14 +69,12 @@ app.patch("/api/todos/:id/toggle", (req, res) => {
 });
 
 // Update a todo's title
-// BUG 4: Overwrites the entire todo object instead of merging, losing fields
-//         like `completed`, `priority`, and `createdAt`.
 app.put("/api/todos/:id", (req, res) => {
   const idx = todos.findIndex((t) => t.id === Number(req.params.id));
   if (idx === -1) {
     return res.status(404).json({ error: "Todo not found" });
   }
-  todos[idx] = { id: todos[idx].id, ...req.body }; // BUG 4: replaces instead of merging; drops completed/priority/createdAt if not sent
+  todos[idx] = { ...todos[idx], ...req.body, id: todos[idx].id };
   saveTodos(todos);
   res.json(todos[idx]);
 });
@@ -94,14 +91,26 @@ app.delete("/api/todos/:id", (req, res) => {
 });
 
 // Stats endpoint
-// BUG 5: Division by zero when there are no todos — completionRate is "NaN".
 app.get("/api/stats", (_req, res) => {
   const total = todos.length;
   const completed = todos.filter((t) => t.completed).length;
-  const raw = Math.round((completed / total) * 100); // BUG 5: NaN when total is 0
-  // Send as string so "NaN" survives JSON serialization
-  const completionRate = isNaN(raw) ? "NaN" : raw;
+  const completionRate = total === 0 ? 0 : Math.round((completed / total) * 100);
   res.json({ total, completed, pending: total - completed, completionRate });
+});
+
+// ---------------------------------------------------------------------------
+// About page
+// ---------------------------------------------------------------------------
+app.get("/about", (_req, res) => {
+  res.send(`
+    <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>About - Todo App</title>
+    <style>body{font-family:system-ui,sans-serif;max-width:600px;margin:40px auto;padding:0 16px;line-height:1.6}a{color:#2563eb}</style>
+    </head><body>
+    <h1>About Todo App</h1>
+    <p>This is a deliberately buggy todo app for testing QAaaS.dev and PRaaS.</p>
+    <p><a href="/">Back to Todo App</a></p>
+    </body></html>
+  `);
 });
 
 // ---------------------------------------------------------------------------
